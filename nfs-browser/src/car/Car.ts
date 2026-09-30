@@ -105,7 +105,7 @@ export class Car {
     // Fizik gövdesi
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(position.x, position.y, position.z)
-      .setLinearDamping(0.2)
+      .setLinearDamping(0.5)
       .setAngularDamping(5)
       .setCanSleep(false);
 
