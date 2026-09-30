@@ -12,13 +12,16 @@ export class Car {
   private brakeForce = 0;
   private currentSpeed = 0;
 
-  // === NFS UNDERGROUND 2 HİSSİ ===
-  private readonly MAX_SPEED = 55;       // m/s (~200 km/h) - NFSU2 hissi
-  private readonly REVERSE_SPEED = 15;   // m/s (~54 km/h)
-  private readonly ENGINE_POWER = 4000;  // Denge ayarı
-  private readonly BRAKE_POWER = 30000;
-  private readonly TURN_SPEED = 3.0;
-  private readonly DRAG = 0.4;
+  // === DENGELİ NFS AYARLARI ===
+  // Kütle: 400kg (hafif spor araba hissi)
+  // Motor: 25000 N
+  // İvme: 25000/400 = 62.5 m/s² (0-100 km/h ~1.5 saniye)
+  private readonly MAX_SPEED = 55;       // m/s = ~200 km/h
+  private readonly REVERSE_SPEED = 12;   // m/s = ~43 km/h
+  private readonly ENGINE_POWER = 25000;
+  private readonly BRAKE_POWER = 60000;
+  private readonly TURN_SPEED = 3.5;
+  private readonly DRAG = 0.3;
 
   constructor(
     scene: THREE.Scene,
@@ -105,18 +108,19 @@ export class Car {
     scene.add(this.mesh);
 
     // === FİZİK GÖVDESİ ===
+    // KRİTİK: linearDamping ÇOK DÜŞÜK olmalı, yoksa araba gitmez
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(position.x, position.y, position.z)
-      .setLinearDamping(1.5)       // Yüksek damping = doğal yavaşlama
-      .setAngularDamping(10)        // Dönmeyi sönümle
+      .setLinearDamping(0.1)        // ← Çok düşük (önceki 1.5 çok yüksekti)
+      .setAngularDamping(8)          // Dönmeyi sönümle (takla atmasın)
       .setCanSleep(false);
 
     this.body = world.createRigidBody(bodyDesc);
 
-    // Kütle: gerçek araba ~1200kg ama oyun için 800 iyi
+    // Kütle: 400kg — hafif ve çevik
     const colliderDesc = RAPIER.ColliderDesc.cuboid(1, 0.5, 2)
-      .setMass(800)
-      .setFriction(0.3)
+      .setMass(400)                  // ← 800 değil, 400
+      .setFriction(0.2)              // Düşük sürtünme
       .setRestitution(0);
 
     world.createCollider(colliderDesc, this.body);
@@ -133,21 +137,19 @@ export class Car {
     const quat = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
     const vel = this.body.linvel();
 
-    // Mevcut hız (m/s)
     const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
     this.currentSpeed = speed;
 
-    // İleri yön
     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(quat);
     forward.y = 0;
     forward.normalize();
 
-    // === GAZ ===
+    // === GAZ (kuvvet uygulaması) ===
     if (Math.abs(this.engineForce) > 0.01) {
-      // İleri için MAX_SPEED, geri için REVERSE_SPEED sınırı
       const limit = this.engineForce > 0 ? this.MAX_SPEED : this.REVERSE_SPEED;
 
       if (speed < limit) {
+        // dt çarpanı: her frame kuvvet * zaman = impulse
         const impulse = this.engineForce * this.ENGINE_POWER * dt;
         this.body.applyImpulse(
           {
@@ -162,7 +164,7 @@ export class Car {
 
     // === FREN ===
     if (this.brakeForce > 0.01 && speed > 0.1) {
-      const brakeFactor = Math.min(1, this.BRAKE_POWER * dt / (speed * 800));
+      const brakeFactor = Math.min(1, this.BRAKE_POWER * dt / (speed * 500 + 1));
       const ratio = 1 - brakeFactor;
       this.body.setLinvel(
         { x: vel.x * ratio, y: vel.y, z: vel.z * ratio },
@@ -181,10 +183,8 @@ export class Car {
     }
 
     // === DİREKSİYON ===
-    if (Math.abs(this.steering) > 0.01 && speed > 0.3) {
-      // Hız arttıkça dönüş açısı azalır (gerçekçi)
+    if (Math.abs(this.steering) > 0.01 && speed > 0.5) {
       const speedFactor = Math.min(1, 6 / speed);
-      // Geri giderken direksiyon ters çalışır
       const direction = this.engineForce < 0 ? -1 : 1;
       const turnAmount = this.steering * this.TURN_SPEED * speedFactor * dt * direction;
       const turnQuat = new THREE.Quaternion().setFromAxisAngle(
@@ -198,7 +198,7 @@ export class Car {
       );
     }
 
-    // === GÖRSEL GÜNCELLE ===
+    // === GÖRSEL ===
     const t = this.body.translation();
     this.mesh.position.set(t.x, t.y, t.z);
     this.mesh.quaternion.copy(quat);
