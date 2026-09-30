@@ -10,67 +10,51 @@ import { createMap } from './world/map';
 import { HUD } from './ui/hud';
 
 async function main() {
-  // Fizik motorunu başlat
-  const RAPIER = await initPhysics();
+  await initPhysics();
   const world = createWorld();
 
-  // Sahne
   const scene = createScene();
   setupLighting(scene);
 
-  // Harita (zemin + yollar + binalar + fizik)
   createMap(scene, world);
 
-  // Araba
   const car = new Car(scene, world, new THREE.Vector3(0, 2, 0));
-
-  // Kamera
   const chaseCam = new ChaseCamera();
-
-  // Kontroller
   const controls = new Controls();
-
-  // HUD
   const hud = new HUD();
 
-  // Renderer
   const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas')!;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true;
 
-  // Loading gizle
   document.querySelector('#loading')?.remove();
 
-  // Animasyon döngüsü
+  // Canvas'a tıklanınca odaklan
+  canvas.addEventListener('click', () => canvas.focus());
+
   const clock = new THREE.Clock();
 
   function animate() {
     requestAnimationFrame(animate);
     const dt = Math.min(clock.getDelta(), 0.05);
 
-    // Kontrolleri arabaya ilet
     car.setInput(controls.throttle, controls.steer, controls.brake);
-
-    // Fizik adımı
     world.step();
-
-    // Araba görselini güncelle
     car.update(dt);
-
-    // Kamera takip
     chaseCam.update(car.mesh);
-
-    // HUD
     hud.update(car.getSpeed());
+
+    // Debug: aktif tuşlar
+    if (controls.activeKeys.length > 0) {
+      console.log('Basılı tuşlar:', controls.activeKeys.join(', '));
+    }
 
     renderer.render(scene, chaseCam.camera);
   }
 
   animate();
 
-  // Pencere boyutu
   window.addEventListener('resize', () => {
     chaseCam.resize();
     renderer.setSize(window.innerWidth, window.innerHeight);
