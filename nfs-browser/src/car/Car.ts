@@ -142,7 +142,7 @@ export class Car {
     if (Math.abs(this.engineForce) > 0.01) {
       // Maksimum hıza ulaşınca gaz kes
       if (speed < this.MAX_SPEED || this.engineForce < 0) {
-        const accel = this.engineForce * this.ACCELERATION * dt;
+        cconst accel = this.engineForce * this.ACCELERATION * dt * 60;
         // Direkt hız vektörüne ekle (impulse yerine, daha stabil)
         this.body.setLinvel(
           {
