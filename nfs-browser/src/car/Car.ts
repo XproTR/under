@@ -11,12 +11,11 @@ export class Car {
   private steering = 0;
   private brakeForce = 0;
 
-  // Ayarlanabilir sabitler
-  private readonly MAX_SPEED = 90;        // ~324 km/h (bol hızlı)
-  private readonly ACCELERATION = 120;    // Çok güçlü gaz
-  private readonly BRAKE_POWER = 80;
-  private readonly TURN_SPEED = 3.5;      // Daha keskin dönüş
-  private readonly DRAG = 0.15;           // Az sürtünme = hızlı
+  // Hız sabitleri
+  private readonly MAX_SPEED = 80;       // m/s (~288 km/h)
+  private readonly ENGINE_POWER = 60000; // Newton (yüksek!)
+  private readonly BRAKE_POWER = 40000;
+  private readonly TURN_SPEED = 3.5;
 
   constructor(
     scene: THREE.Scene,
@@ -65,7 +64,7 @@ export class Car {
     hl2.position.set(0.6, 0.5, 2.05);
     this.mesh.add(hl2);
 
-    // Farların önüne ışık konisi (gece için)
+    // Spot ışıklar
     const spot1 = new THREE.SpotLight(0x00ffff, 5, 30, Math.PI / 6, 0.5);
     spot1.position.set(-0.6, 0.5, 2);
     spot1.target.position.set(-0.6, 0, 15);
@@ -102,18 +101,19 @@ export class Car {
 
     scene.add(this.mesh);
 
-    // Fizik gövdesi
+    // --- FİZİK ---
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(position.x, position.y, position.z)
-      .setLinearDamping(0.5)
-      .setAngularDamping(5)
+      .setLinearDamping(0.01)      // Neredeyse sıfır sürtünme
+      .setAngularDamping(8)         // Dönmeyi sönümle (takla atmasın)
       .setCanSleep(false);
 
     this.body = world.createRigidBody(bodyDesc);
 
+    // Ağırlığı düşür (200 → 100), kolay hızlanır
     const colliderDesc = RAPIER.ColliderDesc.cuboid(1, 0.5, 2)
-      .setMass(200)
-      .setFriction(0.5)
+      .setMass(100)
+      .setFriction(0.3)
       .setRestitution(0);
 
     world.createCollider(colliderDesc, this.body);
@@ -130,25 +130,23 @@ export class Car {
     const quat = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
     const vel = this.body.linvel();
 
-    // Mevcut hız (m/s)
     const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
 
-    // İleri yön (arabanın baktığı yön)
+    // İleri yön
     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(quat);
     forward.y = 0;
     forward.normalize();
 
-    // --- GAZ / FREN ---
+    // --- GAZ (applyImpulse ile gerçek kuvvet) ---
     if (Math.abs(this.engineForce) > 0.01) {
-      // Maksimum hıza ulaşınca gaz kes
       if (speed < this.MAX_SPEED || this.engineForce < 0) {
-        cconst accel = this.engineForce * this.ACCELERATION * dt * 60;
-        // Direkt hız vektörüne ekle (impulse yerine, daha stabil)
-        this.body.setLinvel(
+        // F = m * a  → impulse = F * dt
+        const impulse = this.engineForce * this.ENGINE_POWER * dt;
+        this.body.applyImpulse(
           {
-            x: vel.x + forward.x * accel,
-            y: vel.y,
-            z: vel.z + forward.z * accel
+            x: forward.x * impulse,
+            y: 0,
+            z: forward.z * impulse
           },
           true
         );
@@ -157,38 +155,27 @@ export class Car {
 
     // --- FREN ---
     if (this.brakeForce > 0.01 && speed > 0.1) {
-      const brakeAmount = Math.min(speed, this.BRAKE_POWER * dt);
-      const newSpeed = speed - brakeAmount;
-      const ratio = newSpeed / speed;
+      const brakeImpulse = this.BRAKE_POWER * dt;
+      const ratio = Math.max(0, 1 - brakeImpulse / (speed * 100 + 1));
       this.body.setLinvel(
-        {
-          x: vel.x * ratio,
-          y: vel.y,
-          z: vel.z * ratio
-        },
+        { x: vel.x * ratio, y: vel.y, z: vel.z * ratio },
         true
       );
     }
 
-    // --- SÜRTÜNME (doğal yavaşlama) ---
-    if (speed > 0.1) {
-      const dragAmount = this.DRAG * dt * 60;
-      const newSpeed = Math.max(0, speed - dragAmount);
-      const ratio = newSpeed / speed;
+    // --- DOĞAL YAVAŞLAMA (motor kapalıyken) ---
+    if (Math.abs(this.engineForce) < 0.01 && speed > 0.1) {
+      const drag = 0.5 * dt;
+      const ratio = Math.max(0, 1 - drag);
       this.body.setLinvel(
-        {
-          x: vel.x * ratio,
-          y: vel.y,
-          z: vel.z * ratio
-        },
+        { x: vel.x * ratio, y: vel.y, z: vel.z * ratio },
         true
       );
     }
 
     // --- DİREKSİYON ---
     if (Math.abs(this.steering) > 0.01 && speed > 0.3) {
-      // Hız arttıkça dönüş açısını azalt (gerçekçi)
-      const speedFactor = Math.min(1, 5 / speed);
+      const speedFactor = Math.min(1, 8 / speed);
       const turnAmount = this.steering * this.TURN_SPEED * speedFactor * dt;
       const turnQuat = new THREE.Quaternion().setFromAxisAngle(
         new THREE.Vector3(0, 1, 0),
@@ -206,13 +193,11 @@ export class Car {
     this.mesh.position.set(t.x, t.y, t.z);
     this.mesh.quaternion.copy(quat);
 
-    // Ön tekerlekleri direksiyona göre döndür
     const wheelAngle = -this.steering * 0.5;
     for (const fw of this.frontWheels) {
       fw.rotation.y = wheelAngle;
     }
 
-    // Tekerlek dönüşü (görsel hız hissi)
     const wheelSpin = speed * dt * 2;
     for (const w of this.wheelMeshes) {
       w.rotation.x += wheelSpin;
