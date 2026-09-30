@@ -10,12 +10,15 @@ export class Car {
   private engineForce = 0;
   private steering = 0;
   private brakeForce = 0;
+  private currentSpeed = 0;
 
-  // Hız sabitleri
-  private readonly MAX_SPEED = 80;       // m/s (~288 km/h)
-  private readonly ENGINE_POWER = 60000; // Newton (yüksek!)
-  private readonly BRAKE_POWER = 40000;
-  private readonly TURN_SPEED = 3.5;
+  // === NFS UNDERGROUND 2 HİSSİ ===
+  private readonly MAX_SPEED = 55;       // m/s (~200 km/h) - NFSU2 hissi
+  private readonly REVERSE_SPEED = 15;   // m/s (~54 km/h)
+  private readonly ENGINE_POWER = 4000;  // Denge ayarı
+  private readonly BRAKE_POWER = 30000;
+  private readonly TURN_SPEED = 3.0;
+  private readonly DRAG = 0.4;
 
   constructor(
     scene: THREE.Scene,
@@ -101,18 +104,18 @@ export class Car {
 
     scene.add(this.mesh);
 
-    // --- FİZİK ---
+    // === FİZİK GÖVDESİ ===
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(position.x, position.y, position.z)
-      .setLinearDamping(0.01)      // Neredeyse sıfır sürtünme
-      .setAngularDamping(8)         // Dönmeyi sönümle (takla atmasın)
+      .setLinearDamping(1.5)       // Yüksek damping = doğal yavaşlama
+      .setAngularDamping(10)        // Dönmeyi sönümle
       .setCanSleep(false);
 
     this.body = world.createRigidBody(bodyDesc);
 
-    // Ağırlığı düşür (200 → 100), kolay hızlanır
+    // Kütle: gerçek araba ~1200kg ama oyun için 800 iyi
     const colliderDesc = RAPIER.ColliderDesc.cuboid(1, 0.5, 2)
-      .setMass(100)
+      .setMass(800)
       .setFriction(0.3)
       .setRestitution(0);
 
@@ -130,17 +133,21 @@ export class Car {
     const quat = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
     const vel = this.body.linvel();
 
+    // Mevcut hız (m/s)
     const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+    this.currentSpeed = speed;
 
     // İleri yön
     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(quat);
     forward.y = 0;
     forward.normalize();
 
-    // --- GAZ (applyImpulse ile gerçek kuvvet) ---
+    // === GAZ ===
     if (Math.abs(this.engineForce) > 0.01) {
-      if (speed < this.MAX_SPEED || this.engineForce < 0) {
-        // F = m * a  → impulse = F * dt
+      // İleri için MAX_SPEED, geri için REVERSE_SPEED sınırı
+      const limit = this.engineForce > 0 ? this.MAX_SPEED : this.REVERSE_SPEED;
+
+      if (speed < limit) {
         const impulse = this.engineForce * this.ENGINE_POWER * dt;
         this.body.applyImpulse(
           {
@@ -153,30 +160,33 @@ export class Car {
       }
     }
 
-    // --- FREN ---
+    // === FREN ===
     if (this.brakeForce > 0.01 && speed > 0.1) {
-      const brakeImpulse = this.BRAKE_POWER * dt;
-      const ratio = Math.max(0, 1 - brakeImpulse / (speed * 100 + 1));
+      const brakeFactor = Math.min(1, this.BRAKE_POWER * dt / (speed * 800));
+      const ratio = 1 - brakeFactor;
       this.body.setLinvel(
         { x: vel.x * ratio, y: vel.y, z: vel.z * ratio },
         true
       );
     }
 
-    // --- DOĞAL YAVAŞLAMA (motor kapalıyken) ---
+    // === DOĞAL YAVAŞLAMA (gaz bırakınca) ===
     if (Math.abs(this.engineForce) < 0.01 && speed > 0.1) {
-      const drag = 0.5 * dt;
-      const ratio = Math.max(0, 1 - drag);
+      const dragFactor = this.DRAG * dt;
+      const ratio = Math.max(0, 1 - dragFactor);
       this.body.setLinvel(
         { x: vel.x * ratio, y: vel.y, z: vel.z * ratio },
         true
       );
     }
 
-    // --- DİREKSİYON ---
+    // === DİREKSİYON ===
     if (Math.abs(this.steering) > 0.01 && speed > 0.3) {
-      const speedFactor = Math.min(1, 8 / speed);
-      const turnAmount = this.steering * this.TURN_SPEED * speedFactor * dt;
+      // Hız arttıkça dönüş açısı azalır (gerçekçi)
+      const speedFactor = Math.min(1, 6 / speed);
+      // Geri giderken direksiyon ters çalışır
+      const direction = this.engineForce < 0 ? -1 : 1;
+      const turnAmount = this.steering * this.TURN_SPEED * speedFactor * dt * direction;
       const turnQuat = new THREE.Quaternion().setFromAxisAngle(
         new THREE.Vector3(0, 1, 0),
         turnAmount
@@ -188,7 +198,7 @@ export class Car {
       );
     }
 
-    // --- GÖRSEL GÜNCELLE ---
+    // === GÖRSEL GÜNCELLE ===
     const t = this.body.translation();
     this.mesh.position.set(t.x, t.y, t.z);
     this.mesh.quaternion.copy(quat);
@@ -198,14 +208,13 @@ export class Car {
       fw.rotation.y = wheelAngle;
     }
 
-    const wheelSpin = speed * dt * 2;
+    const wheelSpin = speed * dt * 3;
     for (const w of this.wheelMeshes) {
       w.rotation.x += wheelSpin;
     }
   }
 
   getSpeed(): number {
-    const v = this.body.linvel();
-    return Math.sqrt(v.x * v.x + v.z * v.z) * 3.6;
+    return this.currentSpeed * 3.6;
   }
 }
