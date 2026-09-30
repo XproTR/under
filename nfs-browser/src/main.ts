@@ -39,6 +39,13 @@ async function main() {
     requestAnimationFrame(animate);
     const dt = Math.min(clock.getDelta(), 0.05);
 
+    // R tuşu: reset
+if (controls.activeKeys.includes('r')) {
+  car.body.setTranslation({ x: 0, y: 2, z: 0 }, true);
+  car.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+  car.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  car.body.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+}
     car.setInput(controls.throttle, controls.steer, controls.brake);
     world.step();
     car.update(dt);
