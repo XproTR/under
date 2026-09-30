@@ -172,7 +172,7 @@ export class Car {
 
     // --- SÜRTÜNME (doğal yavaşlama) ---
     if (speed > 0.1) {
-      const dragAmount = this.DRAG * dt;
+      const dragAmount = this.DRAG * dt * 60;
       const newSpeed = Math.max(0, speed - dragAmount);
       const ratio = newSpeed / speed;
       this.body.setLinvel(
