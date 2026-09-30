@@ -1,83 +1,84 @@
 import './style.css';
 import * as THREE from 'three';
+import { createScene } from './engine/scene';
+import { ChaseCamera } from './engine/camera';
+import { setupLighting } from './engine/lighting';
+import { initPhysics, createWorld } from './engine/physics';
+import { Car } from './car/Car';
+import { Controls } from './car/controls';
+import { createMap } from './world/map';
+import { HUD } from './ui/hud';
 
-// Sahne
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x050510);
-scene.fog = new THREE.Fog(0x050510, 20, 150);
+async function main() {
+  // Fizik motorunu başlat
+  const RAPIER = await initPhysics();
+  const world = createWorld();
 
-// Kamera
-const camera = new THREE.PerspectiveCamera(
-  75,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  1000
-);
-camera.position.set(0, 5, 10);
-camera.lookAt(0, 0, 0);
+  // Sahne
+  const scene = createScene();
+  setupLighting(scene);
 
-// Renderer
-const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas')!;
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Harita (zemin + yollar + binalar + fizik)
+  createMap(scene, world);
 
-// Işık
-const ambient = new THREE.AmbientLight(0x404060, 1);
-scene.add(ambient);
+  // Araba
+  const car = new Car(scene, world, new THREE.Vector3(0, 2, 0));
 
-const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-dirLight.position.set(5, 10, 7);
-scene.add(dirLight);
+  // Kamera
+  const chaseCam = new ChaseCamera();
 
-// Neon ışık (NFSU2 hissi)
-const neon = new THREE.PointLight(0xff00ff, 2, 30);
-neon.position.set(0, 3, 0);
-scene.add(neon);
+  // Kontroller
+  const controls = new Controls();
 
-// Zemin (grid — yolları andırıyor)
-const grid = new THREE.GridHelper(200, 100, 0x00ffff, 0x003366);
-scene.add(grid);
+  // HUD
+  const hud = new HUD();
 
-// Test küpü (araba yerine)
-const cubeGeo = new THREE.BoxGeometry(1, 1, 2);
-const cubeMat = new THREE.MeshStandardMaterial({
-  color: 0xff0066,
-  emissive: 0xff0066,
-  emissiveIntensity: 0.5,
-  metalness: 0.8,
-  roughness: 0.2
-});
-const cube = new THREE.Mesh(cubeGeo, cubeMat);
-cube.position.y = 0.5;
-scene.add(cube);
+  // Renderer
+  const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas')!;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
 
-// Loading gizle
-document.querySelector('#loading')!.remove();
+  // Loading gizle
+  document.querySelector('#loading')?.remove();
 
-// Animasyon
-const clock = new THREE.Clock();
+  // Animasyon döngüsü
+  const clock = new THREE.Clock();
 
-function animate() {
-  requestAnimationFrame(animate);
-  const t = clock.getElapsedTime();
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
 
-  // Küpü döndür (test)
-  cube.rotation.y = t * 0.5;
-  cube.position.x = Math.sin(t) * 5;
+    // Kontrolleri arabaya ilet
+    car.setInput(controls.throttle, controls.steer, controls.brake);
 
-  // Neon ışık gezinsin
-  neon.position.x = Math.cos(t * 2) * 8;
-  neon.position.z = Math.sin(t * 2) * 8;
+    // Fizik adımı
+    world.step();
 
-  renderer.render(scene, camera);
+    // Araba görselini güncelle
+    car.update(dt);
+
+    // Kamera takip
+    chaseCam.update(car.mesh);
+
+    // HUD
+    hud.update(car.getSpeed());
+
+    renderer.render(scene, chaseCam.camera);
+  }
+
+  animate();
+
+  // Pencere boyutu
+  window.addEventListener('resize', () => {
+    chaseCam.resize();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
 }
 
-animate();
-
-// Pencere boyutu değişince
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+main().catch((err) => {
+  console.error('Oyun başlatılamadı:', err);
+  const loading = document.querySelector('#loading');
+  if (loading) loading.textContent = 'Hata: ' + err.message;
 });
