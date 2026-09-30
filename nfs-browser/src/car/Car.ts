@@ -12,11 +12,11 @@ export class Car {
   private brakeForce = 0;
 
   // Ayarlanabilir sabitler
-  private readonly MAX_SPEED = 50;        // m/s (~180 km/h)
-  private readonly ACCELERATION = 25;     // m/s²
-  private readonly BRAKE_POWER = 40;
-  private readonly TURN_SPEED = 2.5;      // rad/s
-  private readonly DRAG = 0.5;
+  private readonly MAX_SPEED = 90;        // ~324 km/h (bol hızlı)
+  private readonly ACCELERATION = 120;    // Çok güçlü gaz
+  private readonly BRAKE_POWER = 80;
+  private readonly TURN_SPEED = 3.5;      // Daha keskin dönüş
+  private readonly DRAG = 0.15;           // Az sürtünme = hızlı
 
   constructor(
     scene: THREE.Scene,
